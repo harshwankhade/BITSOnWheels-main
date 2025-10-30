@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "224724597230",
+    "project_id": "bitsonwheelsv1",
+    "storage_bucket": "bitsonwheelsv1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:224724597230:android:7ef3b746eb5aef3f76b6ff",
+        "android_client_info": {
+          "package_name": "com.example.bitsonwheelsv1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCB4rXcxx2JBpJDGyR5tT0zk8ZAK3irNXM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
