@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:bitsonwheelsv1/services/auth_service.dart';
-import 'package:bitsonwheelsv1/screens/add_bike_screen.dart'; //  import Add Bike screen
+import 'package:bitsonwheelsv1/screens/add_bike_screen.dart'; // import Add Bike screen
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -14,7 +14,7 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('BITSOnWheels'),
         actions: [
-          // ✅ Add bike action in AppBar
+          // Add Bike icon on AppBar
           IconButton(
             onPressed: () {
               Navigator.pushNamed(context, AddBikeScreen.routeName);
@@ -37,29 +37,56 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('Welcome, ${user?.email ?? 'User'}'),
-            const SizedBox(height: 12),
-            const Text('Phase 1 complete — Autdddhentication working!'),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pushNamed(context, AddBikeScreen.routeName);
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Add Bike'),
+            Text(
+              'Welcome, ${user?.email ?? 'User'}',
+              style: const TextStyle(fontSize: 18),
+            ),
+
+            // ✅ Two Buttons Side by Side
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Add Bicycle Button
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pushNamed(context, AddBikeScreen.routeName);
+                      },
+                      icon: const Icon(Icons.add_circle_outline),
+                      label: const Text('Add Bicycle'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        textStyle: const TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Book Bicycle Button (placeholder for now)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        // TODO: Replace '/book_bike' with actual route once you create booking screen
+                        Navigator.pushNamed(context, '/book_bike');
+                      },
+                      icon: const Icon(Icons.directions_bike_outlined),
+                      label: const Text('Book Bicycle'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        textStyle: const TextStyle(fontSize: 16),
+                        backgroundColor: Colors.green,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-      ),
-      // ✅ Floating Action Button to Add Bike
-      floatingActionButton: FloatingActionButton.extended(
-          backgroundColor: Colors.blueAccent,
-          foregroundColor: Colors.white,
-        onPressed: () {
-          Navigator.pushNamed(context, AddBikeScreen.routeName);
-        },
-        label: const Text('Add Bike'),
-        icon: const Icon(Icons.add),
       ),
     );
   }
