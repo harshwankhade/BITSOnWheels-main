@@ -6,6 +6,7 @@ import 'package:bitsonwheelsv1/screens/signup_screen.dart';
 import 'package:bitsonwheelsv1/screens/verify_email_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'screens/add_bike_screen.dart';
+import 'package:bitsonwheelsv1/screens/bike_details_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +32,7 @@ class MyApp extends StatelessWidget {
         '/verify': (context) => const VerifyEmailScreen(),
         '/home': (context) => const HomeScreen(),
         '/add_bike': (context) => const AddBikeScreen(),
+        BookBikeScreen.routeName: (context) => const BookBikeScreen(),
       },
     );
   }

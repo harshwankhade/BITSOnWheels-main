@@ -15,9 +15,9 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _loading = false;
   final _authService = AuthService();
 
-  bool _isBitsEmail(String email) {
+  /*bool _isBitsEmail(String email) {
     return email.toLowerCase().endsWith('@pilani.bits-pilani.ac.in');
-  }
+  }*/
 
   Future<void> _signup() async {
     final name = _nameController.text.trim();
@@ -32,14 +32,14 @@ class _SignupScreenState extends State<SignupScreen> {
       }
       return;
     }
-    if (!_isBitsEmail(email)) {
+    /*if (!_isBitsEmail(email)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Please use your BITS Pilani email')),
         );
       }
       return;
-    }
+    }*/
 
     setState(() => _loading = true);
     try {
