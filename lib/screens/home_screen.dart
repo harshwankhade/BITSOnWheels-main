@@ -7,6 +7,7 @@ import 'package:bitsonwheelsv1/services/auth_service.dart';
 import 'package:bitsonwheelsv1/screens/add_bike_screen.dart';
 import 'package:bitsonwheelsv1/services/bike_service.dart';
 import 'package:bitsonwheelsv1/services/booking_service.dart';
+import 'package:bitsonwheelsv1/services/review_service.dart';
 import 'package:bitsonwheelsv1/models/bike.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -293,6 +294,13 @@ class _BikeDetailsPageState extends State<BikeDetailsPage> {
     _load();
   }
 
+  Future<Map<String, dynamic>> _fetchOwnerRating(String ownerId) async {
+    final reviewService = ReviewService();
+    final rating = await reviewService.getAverageRatingForOwner(ownerId);
+    final count = await reviewService.getReviewCountForOwner(ownerId);
+    return {'rating': rating, 'count': count};
+  }
+
   Future<void> _onDelete() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -391,6 +399,39 @@ class _BikeDetailsPageState extends State<BikeDetailsPage> {
               const SizedBox(height: 6),
               Text('Rate: ₹${hourlyRate.toString()} / hour', style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 12),
+              // Owner rating
+              FutureBuilder<Map<String, dynamic>>(
+                future: _fetchOwnerRating(ownerId),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    final data = snapshot.data!;
+                    final rating = data['rating'] as double;
+                    final count = data['count'] as int;
+                    if (rating > 0) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          children: [
+                            ...List.generate(5, (i) {
+                              return Icon(
+                                Icons.star,
+                                size: 18,
+                                color: i < rating ? Colors.amber : Colors.grey[300],
+                              );
+                            }),
+                            const SizedBox(width: 8),
+                            Text(
+                              '$rating ($count reviews)',
+                              style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
               Text(desc),
               const SizedBox(height: 16),
               Text('Contact: $contact'),

@@ -71,13 +71,18 @@ service cloud.firestore {
       );
     }
     
-    // Reviews collection (if you implement reviews later)
+    // Reviews collection
     match /reviews/{reviewId} {
+      // Anyone can read reviews
       allow read: if isSignedIn();
+      
+      // Renters can create reviews (renterId must match auth)
       allow create: if isSignedIn() && 
-        request.resource.data.userId == request.auth.uid;
+        request.resource.data.renterId == request.auth.uid;
+      
+      // Renters can update/delete their own reviews
       allow update, delete: if isSignedIn() && 
-        resource.data.userId == request.auth.uid;
+        resource.data.renterId == request.auth.uid;
     }
     
     // Allow admin/cloud functions to write anywhere (optional - remove if not needed)

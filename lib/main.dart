@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'screens/add_bike_screen.dart';
 import 'package:bitsonwheelsv1/screens/bike_details_screen.dart';
 import 'package:bitsonwheelsv1/services/notification_service.dart';
+import 'package:bitsonwheelsv1/services/review_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -39,6 +40,287 @@ class MyApp extends StatelessWidget {
         '/add_bike': (context) => const AddBikeScreen(),
         BookBikeScreen.routeName: (context) => const BookBikeScreen(),
       },
+    );
+  }
+}
+
+/// Custom dialog widget with countdown timer for booking acceptance
+class _AcceptanceTimerDialog extends StatefulWidget {
+  final String title;
+  final String body;
+  final int timerDurationSeconds;
+  final String bookingId;
+
+  const _AcceptanceTimerDialog({
+    required this.title,
+    required this.body,
+    required this.timerDurationSeconds,
+    required this.bookingId,
+  });
+
+  @override
+  State<_AcceptanceTimerDialog> createState() => _AcceptanceTimerDialogState();
+}
+
+class _AcceptanceTimerDialogState extends State<_AcceptanceTimerDialog> {
+  late int remainingSeconds;
+  late Timer _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    remainingSeconds = widget.timerDurationSeconds;
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        remainingSeconds--;
+        if (remainingSeconds <= 0) {
+          _timer.cancel();
+          // Show rating dialog when timer expires
+          if (mounted) {
+            Navigator.of(context).pop();
+            _showRatingDialog();
+          }
+        }
+      });
+    });
+  }
+
+  void _showRatingDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => _RatingDialog(
+        bookingId: widget.bookingId,
+      ),
+    );
+  }
+
+  String _formatTime(int seconds) {
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = remainingSeconds / widget.timerDurationSeconds;
+    
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: Row(
+        children: [
+          const Icon(Icons.check_circle, color: Colors.green, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(widget.body, style: const TextStyle(fontSize: 15)),
+          const SizedBox(height: 24),
+          // Circular progress indicator with timer
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox(
+                width: 120,
+                height: 120,
+                child: CircularProgressIndicator(
+                  value: progress,
+                  strokeWidth: 4,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    remainingSeconds > 10 ? Colors.green : Colors.orange,
+                  ),
+                  backgroundColor: Colors.grey[300],
+                ),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatTime(remainingSeconds),
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                  const Text(
+                    'Timer',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '${widget.timerDurationSeconds} seconds total',
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+          ),
+        ],
+      ),
+      backgroundColor: Colors.green.withOpacity(0.05),
+      contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+    );
+  }
+}
+
+/// Rating dialog shown when booking is completed
+class _RatingDialog extends StatefulWidget {
+  final String bookingId;
+
+  const _RatingDialog({required this.bookingId});
+
+  @override
+  State<_RatingDialog> createState() => _RatingDialogState();
+}
+
+class _RatingDialogState extends State<_RatingDialog> {
+  double _rating = 0;
+  final _commentController = TextEditingController();
+  bool _isSubmitting = false;
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  void _submitRating() async {
+    if (_rating == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a rating')),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      // Fetch booking details
+      final bookingDoc = await FirebaseFirestore.instance
+          .collection('bookings')
+          .doc(widget.bookingId)
+          .get();
+
+      if (!bookingDoc.exists) {
+        throw Exception('Booking not found');
+      }
+
+      final bookingData = bookingDoc.data()!;
+      final bikeId = bookingData['bikeId'] as String;
+      final ownerId = bookingData['ownerId'] as String;
+
+      // Submit review
+      final reviewService = ReviewService();
+      await reviewService.submitReview(
+        bikeId: bikeId,
+        ownerId: ownerId,
+        bookingId: widget.bookingId,
+        rating: _rating,
+        comment: _commentController.text.trim(),
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Thank you for your rating!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error submitting rating: $e')),
+      );
+    } finally {
+      setState(() => _isSubmitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: const Row(
+        children: [
+          Icon(Icons.star, color: Colors.amber, size: 28),
+          SizedBox(width: 12),
+          Text('Booking Finished! 🎉', style: TextStyle(fontWeight: FontWeight.bold)),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'How was your experience?',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 20),
+            // Star rating
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(5, (index) {
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _rating = (index + 1).toDouble());
+                  },
+                  child: Icon(
+                    Icons.star,
+                    size: 40,
+                    color: index < _rating ? Colors.amber : Colors.grey[300],
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _rating > 0 ? '${_rating.toInt()} out of 5 stars' : 'Select a rating',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 20),
+            // Comment field
+            TextField(
+              controller: _commentController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'Add a comment (optional)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.all(12),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('Skip'),
+        ),
+        ElevatedButton.icon(
+          onPressed: _isSubmitting ? null : _submitRating,
+          icon: _isSubmitting ? const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ) : const Icon(Icons.check),
+          label: Text(_isSubmitting ? 'Submitting...' : 'Submit Rating'),
+        ),
+      ],
     );
   }
 }
@@ -115,8 +397,13 @@ class _RootState extends State<Root> {
                   bookingId: bookingId,
                 );
               } else if (type == 'bookingAccepted') {
-                // Show auto-closing dialog for booking accepted
-                _showAutoClosingDialog(title, body, Colors.green);
+                // Show auto-closing dialog for booking accepted with timer
+                final bookingId = metadata?['bookingId'] as String?;
+                if (bookingId != null) {
+                  _showAcceptanceDialogWithTimer(title, body, bookingId);
+                } else {
+                  _showAutoClosingDialog(title, body, Colors.green);
+                }
               } else if (type == 'bookingRejected') {
                 // Show auto-closing dialog for booking rejected
                 _showAutoClosingDialog(title, body, Colors.red);
@@ -166,6 +453,45 @@ class _RootState extends State<Root> {
       if (mounted && Navigator.canPop(context)) {
         Navigator.of(context).pop();
       }
+    });
+  }
+
+  void _showAcceptanceDialogWithTimer(String title, String body, String bookingId) {
+    if (!mounted) return;
+
+    // Fetch booking details to get duration
+    FirebaseFirestore.instance.collection('bookings').doc(bookingId).get().then((doc) {
+      if (!mounted) return;
+      
+      final booking = doc.data();
+      if (booking == null) {
+        _showAutoClosingDialog(title, body, Colors.green);
+        return;
+      }
+
+      final startTime = (booking['startTime'] as Timestamp?)?.toDate() ?? DateTime.now();
+      final endTime = (booking['endTime'] as Timestamp?)?.toDate() ?? DateTime.now();
+      final durationInHours = endTime.difference(startTime).inHours;
+      final timerDurationSeconds = durationInHours * 10;
+
+      // Create a stateful dialog with timer
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => _AcceptanceTimerDialog(
+          title: title,
+          body: body,
+          timerDurationSeconds: timerDurationSeconds,
+          bookingId: bookingId,
+        ),
+      );
+
+      // Auto-close after timer completes
+      Future.delayed(Duration(seconds: timerDurationSeconds), () {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.of(context).pop();
+        }
+      });
     });
   }
 
