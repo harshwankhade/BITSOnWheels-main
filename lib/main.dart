@@ -191,12 +191,10 @@ class _RatingDialog extends StatefulWidget {
 
 class _RatingDialogState extends State<_RatingDialog> {
   double _rating = 0;
-  final _commentController = TextEditingController();
   bool _isSubmitting = false;
 
   @override
   void dispose() {
-    _commentController.dispose();
     super.dispose();
   }
 
@@ -232,7 +230,7 @@ class _RatingDialogState extends State<_RatingDialog> {
         ownerId: ownerId,
         bookingId: widget.bookingId,
         rating: _rating,
-        comment: _commentController.text.trim(),
+        comment: '', // No written reviews
       );
 
       if (!mounted) return;
@@ -290,19 +288,6 @@ class _RatingDialogState extends State<_RatingDialog> {
               _rating > 0 ? '${_rating.toInt()} out of 5 stars' : 'Select a rating',
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),
-            const SizedBox(height: 20),
-            // Comment field
-            TextField(
-              controller: _commentController,
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText: 'Add a comment (optional)',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                contentPadding: const EdgeInsets.all(12),
-              ),
-            ),
           ],
         ),
       ),
@@ -335,6 +320,7 @@ class Root extends StatefulWidget {
 class _RootState extends State<Root> {
   StreamSubscription<QuerySnapshot>? _notificationSubscription;
   DateTime? _appStartTime;
+  final Set<String> _shownDialogs = {}; // Track shown dialog booking IDs
 
   @override
   void initState() {
@@ -388,14 +374,11 @@ class _RootState extends State<Root> {
               
               if (type == 'bookingRequest' && metadata != null && metadata['bookingId'] != null) {
                 final bookingId = metadata['bookingId'] as String;
-                // Show dialog for booking request
-                _showBookingRequestDialog(title, body, bookingId);
-                // Also show notification
-                NotificationService.instance.showBookingRequestNotification(
-                  title: title,
-                  body: body,
-                  bookingId: bookingId,
-                );
+                // Show detailed dialog for booking request (only once per booking)
+                if (!_shownDialogs.contains(bookingId)) {
+                  _shownDialogs.add(bookingId);
+                  _showBookingRequestDialog(title, body, bookingId);
+                }
               } else if (type == 'bookingAccepted') {
                 // Show auto-closing dialog for booking accepted with timer
                 final bookingId = metadata?['bookingId'] as String?;

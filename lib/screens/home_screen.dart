@@ -59,56 +59,103 @@ class _HomeScreenState extends State<HomeScreen> {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       clipBehavior: Clip.hardEdge,
-      child: InkWell(
-        onTap: () {
-          // Navigate to details page for this bike
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => BikeDetailsPage(bikeId: doc.id),
-            ),
-          );
-        },
-        child: Row(
-          children: [
-            // Thumbnail
-            Container(
-              width: 120,
-              height: 100,
-              color: Colors.grey[200],
-              child: thumb.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: thumb,
-                      fit: BoxFit.cover,
-                      width: 120,
-                      height: 100,
-                      placeholder: (c, u) => Container(color: Colors.grey[200]),
-                      errorWidget: (c, u, e) => const Icon(Icons.broken_image),
-                    )
-                  : const Icon(Icons.directions_bike, size: 48, color: Colors.grey),
-            ),
-            const SizedBox(width: 12),
-            // Info
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(d['title'] ?? 'Untitled', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 6),
-                    Text(d['locationText'] ?? '-', maxLines: 1, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 8),
-                    Text('₹${(d['hourlyRate'] ?? 0).toString()} / hour', style: const TextStyle(fontWeight: FontWeight.w600)),
-                  ],
+      child: Stack(
+        children: [
+          InkWell(
+            onTap: () {
+              // Navigate to details page for this bike
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => BikeDetailsPage(bikeId: doc.id),
                 ),
-              ),
+              );
+            },
+            child: Row(
+              children: [
+                // Thumbnail
+                Container(
+                  width: 120,
+                  height: 100,
+                  color: Colors.grey[200],
+                  child: thumb.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: thumb,
+                          fit: BoxFit.cover,
+                          width: 120,
+                          height: 100,
+                          placeholder: (c, u) => Container(color: Colors.grey[200]),
+                          errorWidget: (c, u, e) => const Icon(Icons.broken_image),
+                        )
+                      : const Icon(Icons.directions_bike, size: 48, color: Colors.grey),
+                ),
+                const SizedBox(width: 12),
+                // Info
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(d['title'] ?? 'Untitled', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 6),
+                        Text(d['locationText'] ?? '-', maxLines: 1, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 8),
+                        Text('₹${(d['hourlyRate'] ?? 0).toString()} / hour', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
-            const SizedBox(width: 8),
-          ],
-        ),
+          ),
+          // Booked badge
+          Positioned(
+            top: 8,
+            right: 8,
+            child: FutureBuilder<bool>(
+              future: _checkIfBikeIsBooked(doc.id),
+              builder: (context, snapshot) {
+                if (snapshot.hasData && snapshot.data == true) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'Booked',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  Future<bool> _checkIfBikeIsBooked(String bikeId) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('bookings')
+          .where('bikeId', isEqualTo: bikeId)
+          .where('status', isEqualTo: 'accepted')
+          .get();
+      
+      return snapshot.docs.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error checking bike booking status: $e');
+      return false;
+    }
   }
 
   @override
