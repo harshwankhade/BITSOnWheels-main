@@ -15,6 +15,7 @@ class Bike {
   final double avgRating;
   final int ratingCount;
   final Timestamp? createdAt;
+  final String status; // "booked" or "unbooked"
 
   Bike({
     required this.id,
@@ -30,6 +31,7 @@ class Bike {
     this.avgRating = 0.0,
     this.ratingCount = 0,
     this.createdAt,
+    this.status = 'unbooked',
   });
 
   /// Convert this Bike to a map suitable for Firestore.
@@ -48,6 +50,7 @@ class Bike {
       'available': available,
       'avgRating': avgRating,
       'ratingCount': ratingCount,
+      'status': status,
     };
 
     if (useServerTimestampForCreatedAt) {
@@ -84,6 +87,7 @@ class Bike {
       ratingCount:
           (data['ratingCount'] is int) ? data['ratingCount'] as int : (data['ratingCount'] is num ? (data['ratingCount'] as num).toInt() : 0),
       createdAt: (data['createdAt'] is Timestamp) ? data['createdAt'] as Timestamp : null,
+      status: (data['status'] as String?) ?? 'unbooked',
     );
   }
 }

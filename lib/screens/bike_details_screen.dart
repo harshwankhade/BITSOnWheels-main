@@ -9,16 +9,36 @@ import '../services/bike_service.dart';
 import '../services/booking_service.dart';
 import 'add_bike_screen.dart';
 
-class BookBikeScreen extends StatelessWidget {
+class BookBikeScreen extends StatefulWidget {
   static const routeName = '/book_bike';
   const BookBikeScreen({super.key});
 
+  @override
+  State<BookBikeScreen> createState() => _BookBikeScreenState();
+}
+
+class _BookBikeScreenState extends State<BookBikeScreen> {
+  bool _showFilters = false;
+  String? _selectedPriceFilter; // null, '<10', '10-20', '>20'
+
   Stream<QuerySnapshot<Map<String, dynamic>>> _availableBikesStream() {
-    return FirebaseFirestore.instance
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
         .collection('bicycles')
-        .where('available', isEqualTo: true)
-        .orderBy('createdAt', descending: true)
-        .snapshots();
+        .where('available', isEqualTo: true);
+
+    // Apply price filter if selected
+    if (_selectedPriceFilter != null) {
+      if (_selectedPriceFilter == '<10') {
+        query = query.where('hourlyRate', isLessThan: 10);
+      } else if (_selectedPriceFilter == '10-20') {
+        query = query.where('hourlyRate', isGreaterThanOrEqualTo: 10)
+            .where('hourlyRate', isLessThanOrEqualTo: 20);
+      } else if (_selectedPriceFilter == '>20') {
+        query = query.where('hourlyRate', isGreaterThan: 20);
+      }
+    }
+
+    return query.orderBy('createdAt', descending: true).snapshots();
   }
 
   void _showBikeDetails(BuildContext context, Map<String, dynamic> bikeData, String bikeId) {

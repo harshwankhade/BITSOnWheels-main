@@ -110,23 +110,25 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          // Booked badge
+          // Status badge - show owner's selected status
           Positioned(
             top: 8,
             right: 8,
-            child: FutureBuilder<bool>(
-              future: _checkIfBikeIsBooked(doc.id),
+            child: FutureBuilder<String?>(
+              future: _getStatusForListing(doc.id),
               builder: (context, snapshot) {
-                if (snapshot.hasData && snapshot.data == true) {
+                if (snapshot.hasData && snapshot.data != null) {
+                  final status = snapshot.data!;
+                  final isBooked = status == 'booked';
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.red,
+                      color: isBooked ? Colors.red : Colors.green,
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Text(
-                      'Booked',
-                      style: TextStyle(
+                    child: Text(
+                      status[0].toUpperCase() + status.substring(1),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
@@ -143,18 +145,21 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<bool> _checkIfBikeIsBooked(String bikeId) async {
+
+  Future<String?> _getStatusForListing(String bikeId) async {
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('bookings')
-          .where('bikeId', isEqualTo: bikeId)
-          .where('status', isEqualTo: 'accepted')
+      final doc = await FirebaseFirestore.instance
+          .collection('bicycles')
+          .doc(bikeId)
           .get();
       
-      return snapshot.docs.isNotEmpty;
+      if (doc.exists) {
+        return doc.data()?['status'] as String?;
+      }
+      return null;
     } catch (e) {
-      debugPrint('Error checking bike booking status: $e');
-      return false;
+      debugPrint('Error getting bike status for listing: $e');
+      return null;
     }
   }
 
@@ -348,6 +353,44 @@ class _BikeDetailsPageState extends State<BikeDetailsPage> {
     return {'rating': rating, 'count': count};
   }
 
+  Future<String?> _getStoredBikeStatus(String bikeId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('bicycles')
+          .doc(bikeId)
+          .get();
+      
+      if (doc.exists) {
+        return doc.data()?['status'] as String?;
+      }
+      return null;
+    } catch (e) {
+      print('Error getting bike status: $e');
+      return null;
+    }
+  }
+
+  Future<void> _updateBikeStatus(String newStatus) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('bicycles')
+          .doc(widget.bikeId)
+          .update({'status': newStatus});
+      
+      setState(() {
+        _data?['status'] = newStatus;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Status updated to: $newStatus')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update status: $e')),
+      );
+    }
+  }
+
   Future<void> _onDelete() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -445,6 +488,100 @@ class _BikeDetailsPageState extends State<BikeDetailsPage> {
               Text('Location: $locationText'),
               const SizedBox(height: 6),
               Text('Rate: ₹${hourlyRate.toString()} / hour', style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
+              // Bike Status - Only show if owner has set it explicitly
+              FutureBuilder<String?>(
+                future: _getStoredBikeStatus(widget.bikeId),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData && snapshot.data != null) {
+                    final status = snapshot.data!;
+                    final isBooked = status == 'booked';
+                    
+                    // Show editable dropdown only for owner
+                    if (currentUid != null && ownerId == currentUid) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: isBooked ? Colors.red[50] : Colors.green[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isBooked ? Colors.red : Colors.green,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  isBooked ? Icons.lock : Icons.check_circle,
+                                  color: isBooked ? Colors.red : Colors.green,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Status: ${status[0].toUpperCase()}${status.substring(1)}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: isBooked ? Colors.red[700] : Colors.green[700],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            DropdownButton<String>(
+                              value: status,
+                              items: const [
+                                DropdownMenuItem(value: 'booked', child: Text('Booked')),
+                                DropdownMenuItem(value: 'unbooked', child: Text('Unbooked')),
+                              ],
+                              onChanged: (newStatus) {
+                                if (newStatus != null && newStatus != status) {
+                                  _updateBikeStatus(newStatus);
+                                }
+                              },
+                              underline: const SizedBox(),
+                              isDense: true,
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    
+                    // Show read-only status for non-owners
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isBooked ? Colors.red[100] : Colors.green[100],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isBooked ? Colors.red : Colors.green,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isBooked ? Icons.lock : Icons.check_circle,
+                            color: isBooked ? Colors.red : Colors.green,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Status: ${status[0].toUpperCase()}${status.substring(1)}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: isBooked ? Colors.red[700] : Colors.green[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
               const SizedBox(height: 12),
               // Owner rating
               FutureBuilder<Map<String, dynamic>>(
