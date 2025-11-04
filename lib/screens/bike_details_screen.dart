@@ -20,11 +20,36 @@ class BookBikeScreen extends StatefulWidget {
 class _BookBikeScreenState extends State<BookBikeScreen> {
   bool _showFilters = false;
   String? _selectedPriceFilter; // null, '<10', '10-20', '>20'
+  String? _selectedLocationFilter; // null or location text
+  String? _selectedRatingFilter; // null, '4plus', '3plus', 'all'
+
+  Future<List<String>> _getAvailableLocations() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('bicycles')
+          .where('available', isEqualTo: true)
+          .get();
+
+      final locations = <String>{};
+      for (var doc in snapshot.docs) {
+        final location = doc.data()['locationText'] as String?;
+        if (location != null && location.isNotEmpty) {
+          locations.add(location);
+        }
+      }
+
+      return locations.toList()..sort();
+    } catch (e) {
+      debugPrint('Error fetching locations: $e');
+      return [];
+    }
+  }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _availableBikesStream() {
     Query<Map<String, dynamic>> query = FirebaseFirestore.instance
         .collection('bicycles')
-        .where('available', isEqualTo: true);
+        .where('available', isEqualTo: true)
+        .where('status', isNotEqualTo: 'booked'); // Exclude booked bikes
 
     // Apply price filter if selected
     if (_selectedPriceFilter != null) {
@@ -38,7 +63,63 @@ class _BookBikeScreenState extends State<BookBikeScreen> {
       }
     }
 
+    // Apply location filter if selected
+    if (_selectedLocationFilter != null) {
+      query = query.where('locationText', isEqualTo: _selectedLocationFilter);
+    }
+
     return query.orderBy('createdAt', descending: true).snapshots();
+  }
+
+  Future<List<DocumentSnapshot<Map<String, dynamic>>>> _filterByRating(List<DocumentSnapshot<Map<String, dynamic>>> docs) async {
+    if (_selectedRatingFilter == null) {
+      return docs;
+    }
+
+    final filteredDocs = <DocumentSnapshot<Map<String, dynamic>>>[];
+
+    for (final doc in docs) {
+      final ownerId = doc.data()!['ownerId'] as String?;
+      if (ownerId == null) continue;
+
+      // Get the actual average rating from reviews collection
+      final rating = await _getActualAverageRating(ownerId);
+      
+      debugPrint('🔍 Bike: ${doc.data()!['title']}, Owner: $ownerId, Rating: $rating, Filter: $_selectedRatingFilter');
+
+      if (_selectedRatingFilter == '4plus') {
+        if (rating >= 4.0) {
+          filteredDocs.add(doc);
+        }
+      } else if (_selectedRatingFilter == '3plus') {
+        if (rating >= 3.0) {
+          filteredDocs.add(doc);
+        }
+      }
+    }
+
+    return filteredDocs;
+  }
+
+  Future<double> _getActualAverageRating(String ownerId) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('reviews')
+          .where('ownerId', isEqualTo: ownerId)
+          .get();
+
+      if (snapshot.docs.isEmpty) return 0.0;
+
+      final ratings = snapshot.docs
+          .map((doc) => (doc.data()['rating'] as num?)?.toDouble() ?? 0.0)
+          .toList();
+
+      final average = ratings.reduce((a, b) => a + b) / ratings.length;
+      return double.parse(average.toStringAsFixed(1));
+    } catch (e) {
+      debugPrint('Error fetching average rating for owner $ownerId: $e');
+      return 0.0;
+    }
   }
 
   void _showBikeDetails(BuildContext context, Map<String, dynamic> bikeData, String bikeId) {
@@ -321,34 +402,280 @@ class _BookBikeScreenState extends State<BookBikeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Available Bicycles'),
-      ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _availableBikesStream(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final docs = snapshot.data?.docs ?? [];
-
-          if (docs.isEmpty) {
-            return const Center(
-              child: Text('No bicycles listed yet.\nAsk someone to add a bike!', textAlign: TextAlign.center),
-            );
-          }
-
-          return ListView.builder(
-            itemCount: docs.length,
-            itemBuilder: (ctx, i) {
-              final doc = docs[i];
-              final data = doc.data();
-              return _bikeCard(context, data, doc.id);
+        actions: [
+          // Filter button
+          IconButton(
+            onPressed: () {
+              setState(() {
+                _showFilters = !_showFilters;
+              });
             },
-          );
-        },
+            icon: const Icon(Icons.filter_list),
+            tooltip: 'Toggle Filters',
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Filter Section - visible when _showFilters is true
+          if (_showFilters)
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.grey[100],
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Price Filter
+                    const Text(
+                      'Price Filter (₹/hour)',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        // Less than 10 Rs
+                        FilterChip(
+                          label: const Text('Less than ₹10'),
+                          selected: _selectedPriceFilter == '<10',
+                          onSelected: (selected) {
+                            setState(() {
+                              _selectedPriceFilter = selected ? '<10' : null;
+                            });
+                          },
+                          backgroundColor: Colors.white,
+                          selectedColor: Colors.green[100],
+                          side: BorderSide(
+                            color: _selectedPriceFilter == '<10' ? Colors.green : Colors.grey[300]!,
+                          ),
+                        ),
+                        // Between 10 and 20 Rs
+                        FilterChip(
+                          label: const Text('₹10 - ₹20'),
+                          selected: _selectedPriceFilter == '10-20',
+                          onSelected: (selected) {
+                            setState(() {
+                              _selectedPriceFilter = selected ? '10-20' : null;
+                            });
+                          },
+                          backgroundColor: Colors.white,
+                          selectedColor: Colors.green[100],
+                          side: BorderSide(
+                            color: _selectedPriceFilter == '10-20' ? Colors.green : Colors.grey[300]!,
+                          ),
+                        ),
+                        // Greater than 20 Rs
+                        FilterChip(
+                          label: const Text('Greater than ₹20'),
+                          selected: _selectedPriceFilter == '>20',
+                          onSelected: (selected) {
+                            setState(() {
+                              _selectedPriceFilter = selected ? '>20' : null;
+                            });
+                          },
+                          backgroundColor: Colors.white,
+                          selectedColor: Colors.green[100],
+                          side: BorderSide(
+                            color: _selectedPriceFilter == '>20' ? Colors.green : Colors.grey[300]!,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Location Filter
+                    const Text(
+                      'Location Filter',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(height: 12),
+                    FutureBuilder<List<String>>(
+                      future: _getAvailableLocations(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const SizedBox(
+                            height: 40,
+                            child: Center(child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                          );
+                        }
+
+                        final locations = snapshot.data ?? [];
+
+                        if (locations.isEmpty) {
+                          return const Text('No locations available', style: TextStyle(fontSize: 12, color: Colors.grey));
+                        }
+
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: locations
+                              .map((location) => FilterChip(
+                                    label: Text(location),
+                                    selected: _selectedLocationFilter == location,
+                                    onSelected: (selected) {
+                                      setState(() {
+                                        _selectedLocationFilter = selected ? location : null;
+                                      });
+                                    },
+                                    backgroundColor: Colors.white,
+                                    selectedColor: Colors.blue[100],
+                                    side: BorderSide(
+                                      color: _selectedLocationFilter == location ? Colors.blue : Colors.grey[300]!,
+                                    ),
+                                  ))
+                              .toList(),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Rating Filter
+                    const Text(
+                      'Rating Filter',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        // 4+ stars
+                        FilterChip(
+                          label: const Text('⭐ 4 & Above'),
+                          selected: _selectedRatingFilter == '4plus',
+                          onSelected: (selected) {
+                            setState(() {
+                              _selectedRatingFilter = selected ? '4plus' : null;
+                            });
+                          },
+                          backgroundColor: Colors.white,
+                          selectedColor: Colors.orange[100],
+                          side: BorderSide(
+                            color: _selectedRatingFilter == '4plus' ? Colors.orange : Colors.grey[300]!,
+                          ),
+                        ),
+                        // 3+ stars
+                        FilterChip(
+                          label: const Text('⭐ 3 & Above'),
+                          selected: _selectedRatingFilter == '3plus',
+                          onSelected: (selected) {
+                            setState(() {
+                              _selectedRatingFilter = selected ? '3plus' : null;
+                            });
+                          },
+                          backgroundColor: Colors.white,
+                          selectedColor: Colors.orange[100],
+                          side: BorderSide(
+                            color: _selectedRatingFilter == '3plus' ? Colors.orange : Colors.grey[300]!,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Clear filters button
+                    if (_selectedPriceFilter != null || _selectedLocationFilter != null || _selectedRatingFilter != null)
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              _selectedPriceFilter = null;
+                              _selectedLocationFilter = null;
+                              _selectedRatingFilter = null;
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[400],
+                          ),
+                          child: const Text('Clear All Filters'),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          // Bike list (stream)
+          Expanded(
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _availableBikesStream(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final docs = snapshot.data?.docs ?? [];
+                
+                // If rating filter is applied, use FutureBuilder to handle async filtering
+                if (_selectedRatingFilter != null) {
+                  return FutureBuilder<List<DocumentSnapshot<Map<String, dynamic>>>>(
+                    future: _filterByRating(docs),
+                    builder: (context, filterSnapshot) {
+                      if (filterSnapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (filterSnapshot.hasError) {
+                        return Center(child: Text('Error: ${filterSnapshot.error}'));
+                      }
+
+                      final filteredDocs = filterSnapshot.data ?? [];
+
+                      if (filteredDocs.isEmpty) {
+                        return Center(
+                          child: Text(
+                            _selectedPriceFilter != null || _selectedLocationFilter != null || _selectedRatingFilter != null
+                                ? 'No bicycles found matching your filters.'
+                                : 'No bicycles listed yet.\nAsk someone to add a bike!',
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      }
+
+                      return ListView.builder(
+                        itemCount: filteredDocs.length,
+                        itemBuilder: (ctx, i) {
+                          final doc = filteredDocs[i];
+                          final data = doc.data();
+                          if (data != null) {
+                            return _bikeCard(context, data, doc.id);
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      );
+                    },
+                  );
+                }
+
+                // No rating filter, just display the list
+                if (docs.isEmpty) {
+                  return Center(
+                    child: Text(
+                      _selectedPriceFilter != null || _selectedLocationFilter != null
+                          ? 'No bicycles found matching your filters.'
+                          : 'No bicycles listed yet.\nAsk someone to add a bike!',
+                      textAlign: TextAlign.center,
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  itemCount: docs.length,
+                  itemBuilder: (ctx, i) {
+                    final doc = docs[i];
+                    final data = doc.data();
+                    return _bikeCard(context, data, doc.id);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
