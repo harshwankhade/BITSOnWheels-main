@@ -5,8 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:bitsonwheelsv1/services/auth_service.dart';
 import 'package:bitsonwheelsv1/screens/add_bike_screen.dart';
-import 'package:bitsonwheelsv1/screens/bike_details_screen.dart'; // if you want to reuse the BookBikeScreen route elsewhere
 import 'package:bitsonwheelsv1/services/bike_service.dart';
+import 'package:bitsonwheelsv1/services/booking_service.dart';
 import 'package:bitsonwheelsv1/models/bike.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -19,6 +19,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool showOnlyMine = false;
+
+  @override
+  void initState() {
+    super.initState();
+  }
 
   Future<String?> _getUserName() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -36,7 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _bikesStream({String? ownerId}) {
-    final col = FirebaseFirestore.instance.collection('bicycles') as CollectionReference<Map<String, dynamic>>;
+    final col = FirebaseFirestore.instance.collection('bicycles');
     Query<Map<String, dynamic>> q = col.where('available', isEqualTo: true);
     if (ownerId != null && ownerId.isNotEmpty) {
       q = q.where('ownerId', isEqualTo: ownerId);
@@ -253,7 +258,6 @@ class _BikeDetailsPageState extends State<BikeDetailsPage> {
   final BikeService _bikeService = BikeService();
   bool _loading = true;
   Map<String, dynamic>? _data;
-  String? _id;
   String? _error;
   bool _deleting = false;
 
@@ -273,7 +277,6 @@ class _BikeDetailsPageState extends State<BikeDetailsPage> {
       }
       setState(() {
         _data = doc.data();
-        _id = doc.id;
         _loading = false;
       });
     } catch (e) {
@@ -397,9 +400,82 @@ class _BikeDetailsPageState extends State<BikeDetailsPage> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () {
-                        // placeholder booking action
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking not implemented yet')));
+                      onPressed: () async {
+                        int hours = 1;
+                        double rate = hourlyRate;
+                        double totalCost = rate;
+                        await showDialog(
+                          context: context,
+                          builder: (dialogCtx) {
+                            return StatefulBuilder(
+                              builder: (context, setState) {
+                                return AlertDialog(
+                                  title: const Text('Book Bicycle'),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text('Enter number of hours:'),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: TextFormField(
+                                              initialValue: hours.toString(),
+                                              keyboardType: TextInputType.number,
+                                              decoration: const InputDecoration(
+                                                border: OutlineInputBorder(),
+                                                isDense: true,
+                                              ),
+                                              onChanged: (val) {
+                                                final parsed = int.tryParse(val);
+                                                if (parsed != null && parsed > 0) {
+                                                  setState(() {
+                                                    hours = parsed;
+                                                    totalCost = rate * hours;
+                                                  });
+                                                }
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text('Total cost: ₹${totalCost.toStringAsFixed(2)}'),
+                                    ],
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(dialogCtx).pop(),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () async {
+                                        try {
+                                          await BookingService().requestBooking(
+                                            bikeId: widget.bikeId,
+                                            startTime: DateTime.now(),
+                                            endTime: DateTime.now().add(Duration(hours: hours)),
+                                            price: totalCost,
+                                          );
+                                          Navigator.of(dialogCtx).pop();
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Booking request sent!')),
+                                          );
+                                        } catch (e) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Failed to request booking: $e')),
+                                          );
+                                        }
+                                      },
+                                      child: const Text('Confirm Booking'),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
+                        );
                       },
                       icon: const Icon(Icons.request_page),
                       label: const Text('Request Booking'),

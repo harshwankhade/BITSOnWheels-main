@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/bike.dart';
 import '../services/bike_service.dart';
+import '../services/booking_service.dart';
 import 'add_bike_screen.dart';
 
 class BookBikeScreen extends StatelessWidget {
@@ -78,14 +79,86 @@ class BookBikeScreen extends StatelessWidget {
                   // Request Booking always visible (placeholder)
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Booking flow not implemented yet')),
-                        );
-                      },
-                      icon: const Icon(Icons.request_page),
-                      label: const Text('Request Booking'),
+                        onPressed: () async {
+                          Navigator.of(ctx).pop();
+                          int hours = 1;
+                          double rate = (bikeData['hourlyRate'] is num) ? (bikeData['hourlyRate'] as num).toDouble() : 0.0;
+                          double totalCost = rate;
+                          await showDialog(
+                            context: context,
+                            builder: (dialogCtx) {
+                              return StatefulBuilder(
+                                builder: (context, setState) {
+                                  return AlertDialog(
+                                    title: const Text('Book Bicycle'),
+                                    content: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text('Enter number of hours:'),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: TextFormField(
+                                                initialValue: hours.toString(),
+                                                keyboardType: TextInputType.number,
+                                                decoration: const InputDecoration(
+                                                  border: OutlineInputBorder(),
+                                                  isDense: true,
+                                                ),
+                                                onChanged: (val) {
+                                                  final parsed = int.tryParse(val);
+                                                  if (parsed != null && parsed > 0) {
+                                                    setState(() {
+                                                      hours = parsed;
+                                                      totalCost = rate * hours;
+                                                    });
+                                                  }
+                                                },
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text('Total cost: ₹${totalCost.toStringAsFixed(2)}'),
+                                      ],
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.of(dialogCtx).pop(),
+                                        child: const Text('Cancel'),
+                                      ),
+                                    ElevatedButton(
+                                      onPressed: () async {
+                                        try {
+                                          await BookingService().requestBooking(
+                                            bikeId: bikeId,
+                                            startTime: DateTime.now(),
+                                            endTime: DateTime.now().add(Duration(hours: hours)),
+                                            price: totalCost,
+                                          );
+                                          Navigator.of(dialogCtx).pop();
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Booking request sent!')),
+                                          );
+                                        } catch (e) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Failed to request booking: $e')),
+                                          );
+                                        }
+                                      },
+                                      child: const Text('Confirm Booking'),
+                                    ),
+                                    ],
+                                  );
+                                },
+                              );
+                            },
+                          );
+                        },
+                        icon: const Icon(Icons.request_page),
+                        label: const Text('Request Booking'),
                     ),
                   ),
                 ],

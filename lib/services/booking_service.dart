@@ -42,17 +42,16 @@ class BookingService {
     });
 
     // 3) Optional: Write an in-app notification document for the owner
-    await _fire.collection('notifications').add({
-      'userId': ownerId, // target user
+    await _fire.collection('users').doc(ownerId).collection('notifications').add({
       'title': 'New booking request',
       'body': '${user.email ?? 'Someone'} requested a booking for ${bikeData['title'] ?? 'your bike'}.',
-      'payload': {
+      'type': 'bookingRequest',
+      'metadata': {
         'bookingId': bookingRef.id,
         'bikeId': bikeId,
       },
       'read': false,
       'createdAt': FieldValue.serverTimestamp(),
-      'fromUserId': user.uid,
     });
 
     // (Optional) Trigger push notification server-side (Cloud Function) based on bookings creation.

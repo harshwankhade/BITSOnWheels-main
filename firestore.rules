@@ -1,0 +1,89 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the document
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    // Users collection - users can read/write their own document
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId);
+      
+      // FCM tokens subcollection
+      match /fcmTokens/{tokenId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // Notifications subcollection
+      match /notifications/{notificationId} {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId) || isSignedIn();
+      }
+    }
+    
+    // Bicycles collection
+    match /bicycles/{bikeId} {
+      // Anyone authenticated can read bikes
+      allow read: if isSignedIn();
+      
+      // Only owner can update/delete their bike
+      allow update, delete: if isSignedIn() && 
+        resource.data.ownerId == request.auth.uid;
+      
+      // Anyone authenticated can create a bike (ownerId must match auth)
+      allow create: if isSignedIn() && 
+        request.resource.data.ownerId == request.auth.uid;
+    }
+    
+    // Bookings collection
+    match /bookings/{bookingId} {
+      // Renters can read their own bookings
+      // Owners can read bookings for their bikes
+      allow read: if isSignedIn() && (
+        resource.data.renterId == request.auth.uid ||
+        resource.data.ownerId == request.auth.uid
+      );
+      
+      // Renters can create bookings (renterId must match auth)
+      allow create: if isSignedIn() && 
+        request.resource.data.renterId == request.auth.uid &&
+        request.resource.data.status == 'requested';
+      
+      // Renters can update their own bookings (limited fields)
+      // Owners can update bookings for their bikes (accept/reject/finish)
+      allow update: if isSignedIn() && (
+        (resource.data.renterId == request.auth.uid) ||
+        (resource.data.ownerId == request.auth.uid)
+      );
+      
+      // Only owner or renter can delete
+      allow delete: if isSignedIn() && (
+        resource.data.renterId == request.auth.uid ||
+        resource.data.ownerId == request.auth.uid
+      );
+    }
+    
+    // Reviews collection (if you implement reviews later)
+    match /reviews/{reviewId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && 
+        request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && 
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // Allow admin/cloud functions to write anywhere (optional - remove if not needed)
+    // This allows your Firebase Functions to write to any collection
+    match /{document=**} {
+      allow read, write: if false; // Change to true only for testing, then remove
+    }
+  }
+}
